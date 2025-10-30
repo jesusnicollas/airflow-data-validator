@@ -12,7 +12,7 @@ x-airflow-common:
     AIRFLOW__CORE__FERNET_KEY: ''
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
     AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
-    _PIP_ADDITIONAL_REQUIREMENTS: ''
+    _PIP_ADDITIONAL_REQUIREMENTS: apache-airflow-providers-postgres apache-airflow-providers-amazon apache-airflow-providers-mysql
   volumes:
     - ./dags:/opt/airflow/dags
     - ./logs:/opt/airflow/logs
@@ -24,8 +24,11 @@ x-airflow-common:
       condition: service_healthy
     postgres:
       condition: service_healthy
+    mysql:
+      condition: service_healthy
 
 services:
+    # Postgres
   postgres:
     image: postgres:16
     environment:
@@ -39,11 +42,31 @@ services:
     volumes:
       - postgres-db-volume:/var/lib/postgresql/data
 
+    # Redis
   redis:
     image: redis:7
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
+      retries: 5
+
+    # MySQL
+  mysql:
+    image: mysql:8.0
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: appdb
+      MYSQL_USER: airflow
+      MYSQL_PASSWORD: airflow
+    ports:
+      - "3306:3306"   # opcional, se quiser acessar do pc local
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot"]
+      interval: 10s
+      timeout: 5s
       retries: 5
 
   airflow-webserver:
@@ -84,4 +107,4 @@ services:
 
 volumes:
   postgres-db-volume:
-
+  mysql-data:
