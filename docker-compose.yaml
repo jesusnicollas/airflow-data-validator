@@ -12,7 +12,7 @@ x-airflow-common:
     AIRFLOW__CORE__FERNET_KEY: ''
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
     AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
-    _PIP_ADDITIONAL_REQUIREMENTS: apache-airflow-providers-postgres apache-airflow-providers-amazon apache-airflow-providers-mysql
+    _PIP_ADDITIONAL_REQUIREMENTS: apache-airflow-providers-postgres apache-airflow-providers-amazon apache-airflow-providers-mysql pyspark==3.5.1 mysql-connector-python
   volumes:
     - ./dags:/opt/airflow/dags
     - ./logs:/opt/airflow/logs
