@@ -91,7 +91,9 @@ def extract_func(ti):
 
 #Transform
 def transform_cotacao_func(ti):
-    temp_path = ti.xcom_pull(task_ids='extract_func')
+    temp_path = ti.xcom_pull(task_ids='extract')
+    if temp_path is None:
+        return None
     spark = get_spark()
     df = spark.read.parquet(temp_path)
     df.createOrReplaceTempView("cotacoes")
@@ -99,7 +101,7 @@ def transform_cotacao_func(ti):
     df_transformado = spark.sql("""
                                 SELECT coMoeda,
                                        TO_DATE(dtReferencia, 'dd/MM/yyyy')         as dtReferencia,
-                                       current_timestamp()                         as dtExecucaoDag,
+                                       cast(current_timestamp() as timestamp) - interval 3 hour                        as dtExecucaoDag,
                                        tpMoeda,
                                        noMoeda,
                                        CAST(REPLACE(txCompra, ',', '.') AS FLOAT)  as txCompra,
@@ -119,48 +121,48 @@ def transform_cotacao_func(ti):
 def staging_cotacao_func(ti):
     spark = get_spark()
     temp_path_treated = ti.xcom_pull(task_ids='transform_cotacao')
+    if temp_path_treated is None:
+        return None
     df_transformado = spark.read.parquet(temp_path_treated)
-
-    try:
-        df_transformado.write.jdbc(
-            url="jdbc:mysql://mysql:3306/appdb",
-            table="tb_cotacoes_staging",
-            mode="overwrite",
-            properties={"user": "airflow", "password": "airflow", "driver": "com.mysql.cj.jdbc.Driver"}
-        )
-        print("Driver MySQL encontrado e Executado com sucesso!")
-    except Exception as e:
-        print(f"Driver não encontrado: {e}")
+    df_transformado.write.jdbc(
+        url="jdbc:mysql://mysql:3306/appdb",
+        table="tb_cotacoes_staging",
+        mode="overwrite",
+        properties={"user": "airflow", "password": "airflow", "driver": "com.mysql.cj.jdbc.Driver"}
+    )
+    logging.info("Dados carregados na staging com sucesso!")
 
 
 def delete_data_func(ti):
     data_bar_1, data_str_1, file_path, full_url = ti.xcom_pull(task_ids='variables_execution')
+    temp_path_treated = ti.xcom_pull(task_ids='transform_cotacao')
+    if temp_path_treated is None:
+        return None
     conn = None
     try:
-        conn = (mysql.connector
-                .connect(user='airflow',
-                         password='airflow',
-                         host='mysql',
-                         database='appdb',
-                         autocommit=False,
-                         )
-                )
+        conn = mysql.connector.connect(
+            user='airflow',
+            password='airflow',
+            host='mysql',
+            database='appdb',
+            autocommit=False
+        )
         cursor = conn.cursor(buffered=True)
         conn.start_transaction(isolation_level='READ COMMITTED')
         cursor.execute(f"""
-                   DELETE
-                   FROM tb_cotacoes
-                   where date(dtReferencia) = '{data_bar_1}'
-                   """)
+            DELETE FROM tb_cotacoes
+            WHERE date(dtReferencia) = '{data_bar_1}'
+        """)
         deleted = cursor.rowcount
         conn.commit()
+        logging.info(f"{deleted} registros deletados")
         return deleted
 
     except Exception as e:
-        print(f"Erro ao deletar dados: {e}")
+        logging.error(f"Erro ao deletar dados: {e}")
         if conn:
             conn.rollback()
-        return None
+        raise
 
     finally:
         if conn:
@@ -168,30 +170,52 @@ def delete_data_func(ti):
 
 def load_data_func(ti):
     data_bar_1, data_str_1, file_path, full_url = ti.xcom_pull(task_ids='variables_execution')
-    deleted = ti.xcom_pull(task_ids='delete_data_func')
+    deleted = ti.xcom_pull(task_ids='delete_data')
+    temp_path_treated = ti.xcom_pull(task_ids='transform_cotacao')
+    if temp_path_treated is None:
+        logging.info("Nenhum dado para carregar")
+        # Registrar arquivo não encontrado na tabela de controle
+        conn = mysql.connector.connect(
+            user='airflow',
+            password='airflow',
+            host='mysql',
+            database='appdb',
+            autocommit=False
+        )
+        cursor = conn.cursor(buffered=True)
+        cursor.execute(f'''
+            INSERT INTO tb_controle_execucao (dtExecucao, noArquivo, dsObservacao)
+            VALUES (NOW(), '{data_str_1}.csv', 'Arquivo não encontrado no Banco Central')
+        ''')
+        logging.info("Nenhum dado para carregar (arquivo não encontrado)")
+        return None
     conn = None
     try:
-        conn = (mysql.connector
-                .connect(user='airflow',
-                         password='airflow',
-                         host='mysql',
-                         database='appdb',
-                         autocommit=False,
-                         )
-                )
+        conn = mysql.connector.connect(
+            user='airflow',
+            password='airflow',
+            host='mysql',
+            database='appdb',
+            autocommit=False
+        )
         cursor = conn.cursor(buffered=True)
         conn.start_transaction(isolation_level='READ COMMITTED')
-        cursor.execute(
-            """INSERT INTO tb_cotacoes(coMoeda, dtReferencia, dtExecucaoDag, tpMoeda, noMoeda, txCompra, txVenda, parCompra, parVenda)
-                      SELECT *
-                      FROM tb_cotacoes_staging""")
+        cursor.execute("""
+            INSERT INTO tb_cotacoes(coMoeda, dtReferencia, dtExecucaoDag, tpMoeda, noMoeda, txCompra, txVenda, parCompra, parVenda)
+            SELECT * FROM tb_cotacoes_staging
+        """)
         affected = cursor.rowcount
-        cursor.execute(f"""INSERT INTO tb_controle_execucao(dtExecucao, noArquivo, dsObservacao) VALUES (NOW(), '{file_path}', 'Sucesso: {deleted} registros deletados, {affected} carregados')""")
+        cursor.execute(f"""
+            INSERT INTO tb_controle_execucao(dtExecucao, noArquivo, dsObservacao)
+            VALUES (NOW(), '{file_path}', '{deleted} registros deletados, {affected} carregados')
+        """)
         conn.commit()
+        logging.info(f"{affected} registros carregados com sucesso")
     except Exception as e:
-        print(f"Erro ao inserir dados: {e}")
+        logging.error(f"Erro ao inserir dados: {e}")
         if conn:
             conn.rollback()
+        raise
     finally:
         if conn:
             conn.close()
@@ -222,7 +246,7 @@ with DAG('dag_cotacoesv2', start_date=datetime(2025, 10, 28, 11, 00, 00, 00), sc
         python_callable=staging_cotacao_func
     )
     delete_data = PythonOperator(
-        task_id='delete_data_func',
+        task_id='delete_data',
         python_callable=delete_data_func
     )
     load_data = PythonOperator(
