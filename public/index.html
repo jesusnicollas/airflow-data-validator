@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard de Cotações</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/date-fns@2.29.3/index.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Dashboard de Cotações de Moedas</h1>
+            <div class="controls">
+                <div class="control-group">
+                    <label for="moedaSelect">Moeda:</label>
+                    <select id="moedaSelect" class="select-primary">
+                        <option value="">Carregando...</option>
+                    </select>
+                </div>
+
+                <div class="control-group">
+                    <label for="periodoSelect">Período:</label>
+                    <select id="periodoSelect">
+                        <option value="7">7 dias</option>
+                        <option value="15">15 dias</option>
+                        <option value="30" selected>30 dias</option>
+                        <option value="60">60 dias</option>
+                        <option value="90">90 dias</option>
+                    </select>
+                </div>
+
+                <button id="atualizarBtn" class="btn-primary">Atualizar</button>
+                <button id="autoUpdateBtn" class="btn-secondary">Auto-atualização: OFF</button>
+            </div>
+        </header>
+
+        <main>
+            <div class="stats-container">
+                <div class="stat-card">
+                    <h3>Taxa de Compra Atual</h3>
+                    <p class="stat-value" id="taxaCompraAtual">-</p>
+                    <p class="stat-change" id="variacaoCompra">-</p>
+                </div>
+                <div class="stat-card">
+                    <h3>Taxa de Venda Atual</h3>
+                    <p class="stat-value" id="taxaVendaAtual">-</p>
+                    <p class="stat-change" id="variacaoVenda">-</p>
+                </div>
+                <div class="stat-card">
+                    <h3>Média do Período</h3>
+                    <p class="stat-value" id="mediaPeriodo">-</p>
+                </div>
+                <div class="stat-card">
+                    <h3>Volatilidade</h3>
+                    <p class="stat-value" id="volatilidade">-</p>
+                </div>
+            </div>
+
+            <div class="chart-container">
+                <h2>Variação das Taxas</h2>
+                <canvas id="chartPrincipal"></canvas>
+            </div>
+
+            <div class="comparison-section">
+                <h2>Comparar Moedas</h2>
+                <div class="comparison-controls">
+                    <select id="moedasComparar" multiple class="select-multiple">
+                        <option value="">Carregando moedas...</option>
+                    </select>
+                    <button id="compararBtn" class="btn-primary">Comparar</button>
+                </div>
+                <div class="chart-container">
+                    <canvas id="chartComparacao"></canvas>
+                </div>
+            </div>
+
+            <div class="table-container">
+                <h2>Últimas Cotações</h2>
+                <table id="tabelaCotacoes">
+                    <thead>
+                        <tr>
+                            <th>Data/Hora</th>
+                            <th>Moeda</th>
+                            <th>Taxa Compra</th>
+                            <th>Taxa Venda</th>
+                            <th>Par. Compra</th>
+                            <th>Par. Venda</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td colspan="6" class="loading">Carregando...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </main>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
